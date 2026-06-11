@@ -69,6 +69,12 @@
     font-size:.95rem;letter-spacing:.03em;color:#DCE6F7;
   }
   .stats b{color:var(--accent);font-size:1.15rem;margin-right:4px}
+  .hours{
+    margin-top:10px;font-size:.88rem;color:#DCE6F7;
+    display:flex;align-items:center;gap:7px;
+  }
+  .hours .dot{width:8px;height:8px;border-radius:50%;background:var(--accent);flex-shrink:0}
+  .hours b{color:#fff;font-weight:600}
   /* ---------- controls ---------- */
   .controls{
     max-width:680px;margin:14px auto 0;padding:0 16px;
@@ -174,6 +180,7 @@
       <span class="updated" id="updated">loading…</span>
     </div>
     <div class="park-tabs" role="group" aria-label="Choose park" id="park-tabs"></div>
+    <div class="hours" id="hours" hidden></div>
     <div class="stats" id="stats" hidden>
       <span><b id="stat-open">–</b>rides open</span>
       <span><b id="stat-avg">–</b>min avg wait</span>
@@ -198,17 +205,19 @@
 </main>
 
 <footer>
-  Data refreshes every 5 minutes · Powered by
-  <a href="https://queue-times.com/en-US" target="_blank" rel="noopener">Queue-Times.com</a>
+  Data refreshes every 5 minutes · Wait times by
+  <a href="https://queue-times.com/en-US" target="_blank" rel="noopener">Queue-Times.com</a> ·
+  Opening hours by <a href="https://www.wartezeiten.app/en/" target="_blank" rel="noopener">Wartezeiten.APP</a>
 </footer>
 
 <script>
 (function(){
   "use strict";
   // Add or remove parks here — find IDs at https://queue-times.com/parks.json
+  // "wz" is the park code for hours, from https://api.wartezeiten.app (v1/parks)
   var PARKS = [
-    { id: 51,  name: "Europa-Park" },
-    { id: 309, name: "Rulantica" }
+    { id: 51,  name: "Europa-Park", wz: "europapark" },
+    { id: 309, name: "Rulantica",   wz: "rulantica" }
   ];
   function apiUrl(parkId){
     return "https://queue-times.com/parks/" + parkId + "/queue_times.json";
@@ -414,7 +423,7 @@
   /* ---------- events ---------- */
   $("search").addEventListener("input", function(e){ state.query = e.target.value; render(); });
   $("show-closed").addEventListener("change", function(e){ state.showClosed = e.target.checked; render(); });
-  $("refresh").addEventListener("click", fetchData);
+  $("refresh").addEventListener("click", function(){ fetchData(); fetchHours(); });
   $("sort-wait").addEventListener("click", function(){ setSort("wait"); });
   $("sort-land").addEventListener("click", function(){ setSort("land"); });
   function setSort(s){
@@ -432,6 +441,69 @@
     saveFavs();
     render();
   });
+
+  /* ---------- today's opening hours (wartezeiten.app) ---------- */
+  function hoursSources(wz){
+    var api = "https://api.wartezeiten.app/v1/openingtimes";
+    var prox = encodeURIComponent(api);
+    return [
+      { url: api, headers: { park: wz } },                            // direct (CORS permitting)
+      { url: "https://corsproxy.io/?url=" + prox, headers: { park: wz } } // proxy that forwards headers
+    ];
+  }
+
+  function fetchHours(){
+    var forPark = state.parkId;
+    var park = PARKS.filter(function(p){ return p.id === forPark; })[0];
+    if (!park.wz){ $("hours").hidden = true; return; }
+    var list = hoursSources(park.wz);
+    tryNext(0);
+
+    function tryNext(i){
+      if (i >= list.length){ if (forPark === state.parkId) $("hours").hidden = true; return; }
+      var opts = { cache: "no-store" };
+      if (list[i].headers) opts.headers = list[i].headers;
+      fetch(list[i].url, opts)
+        .then(function(r){ if(!r.ok) throw new Error(r.status); return r.json(); })
+        .then(function(json){
+          if (forPark !== state.parkId) return;
+          var info = parseHours(json);
+          if (!info) throw new Error("shape");
+          renderHours(info);
+        })
+        .catch(function(){ tryNext(i+1); });
+    }
+  }
+
+  // Tolerant parser: finds open/close times in the first entry, whatever the exact field names.
+  function parseHours(json){
+    var entry = Array.isArray(json) ? json[0] : json;
+    if (!entry || typeof entry !== "object") return null;
+    var open = null, close = null, openedToday = null;
+    Object.keys(entry).forEach(function(k){
+      var v = entry[k];
+      var lk = k.toLowerCase();
+      if (typeof v === "boolean" && lk.indexOf("open") !== -1) openedToday = v;
+      if (typeof v !== "string") return;
+      var m = v.match(/(\d{1,2}):(\d{2})/);
+      if (!m) return;
+      var t = ("0" + m[1]).slice(-2) + ":" + m[2];
+      if (lk.indexOf("clos") !== -1 || lk.indexOf("until") !== -1 || lk.indexOf("to") === 0) close = t;
+      else if (lk.indexOf("open") !== -1 || lk.indexOf("from") !== -1) open = t;
+    });
+    if (openedToday === false) return { closedToday: true };
+    if (open && close) return { open: open, close: close };
+    return null;
+  }
+
+  function renderHours(info){
+    var el = $("hours");
+    el.hidden = false;
+    el.innerHTML = info.closedToday
+      ? '<span class="dot"></span>Closed today'
+      : '<span class="dot"></span>Today open <b>' + info.open + '</b> – <b>' + info.close + '</b>' +
+        ' <span style="opacity:.7">(closing time may be extended during the day)</span>';
+  }
 
   /* ---------- park switching ---------- */
   function renderParkTabs(){
@@ -460,7 +532,9 @@
     applyPark();
     $("updated").textContent = "loading…";
     $("stats").hidden = true;
+    $("hours").hidden = true;
     fetchData();
+    fetchHours();
   }
   $("park-tabs").addEventListener("click", function(e){
     var btn = e.target.closest("[data-park-id]");
@@ -470,7 +544,8 @@
   /* ---------- go ---------- */
   applyPark();
   fetchData();
-  setInterval(fetchData, REFRESH_MS);
+  fetchHours();
+  setInterval(function(){ fetchData(); fetchHours(); }, REFRESH_MS);
   setInterval(renderUpdated, 30000);
 })();
 </script>
