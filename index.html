@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Europa-Park — Wait Times</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --navy:#06255B;        /* park brand ink */
+    --navy-soft:#27406F;
+    --paper:#EEF2F8;       /* cool porcelain, readable in daylight */
+    --card:#FFFFFF;
+    --line:#D5DDEA;
+    --gold:#FFC83D;        /* park brand yellow */
+    --accent:#FFC83D;      /* switches per park */
+    --ok:#0E8A6D;          /* short wait */
+    --ok-bg:#DCF2EA;
+    --mid:#B57700;         /* medium wait */
+    --mid-bg:#FBEFD3;
+    --high:#C22B3B;        /* long wait */
+    --high-bg:#FADEE1;
+    --closed:#8893A6;
+    --closed-bg:#E8EBF1;
+    --radius:14px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    font-family:'Barlow',system-ui,sans-serif;
+    background:var(--paper);
+    color:var(--navy);
+    min-height:100vh;
+  }
+  body[data-park="309"]{--accent:#54D8DE}  /* Rulantica aqua */
+  /* ---------- header ---------- */
+  header{
+    background:var(--navy);
+    color:#fff;
+    padding:18px 16px 14px;
+    position:sticky;top:0;z-index:10;
+    box-shadow:0 2px 12px rgba(6,37,91,.25);
+  }
+  .head-inner{max-width:680px;margin:0 auto}
+  .head-top{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+  h1{
+    font-family:'Barlow Condensed',sans-serif;
+    font-weight:700;font-size:1.7rem;letter-spacing:.04em;
+    text-transform:uppercase;
+  }
+  h1 .accent{color:var(--accent)}
+  .updated{font-size:.78rem;color:#BFD0EE;white-space:nowrap}
+  .park-tabs{display:flex;gap:8px;margin-top:12px}
+  .park-tabs button{
+    font-family:'Barlow Condensed',sans-serif;font-weight:600;
+    font-size:.95rem;letter-spacing:.05em;text-transform:uppercase;
+    border:1px solid rgba(255,255,255,.35);background:transparent;color:#DCE6F7;
+    border-radius:999px;padding:7px 18px;cursor:pointer;
+  }
+  .park-tabs button[aria-pressed="true"]{
+    background:var(--accent);border-color:var(--accent);color:var(--navy);
+  }
+  .park-tabs button:focus-visible{outline:2px solid #fff;outline-offset:2px}
+  .stats{
+    display:flex;gap:18px;margin-top:8px;
+    font-family:'Barlow Condensed',sans-serif;font-weight:600;
+    font-size:.95rem;letter-spacing:.03em;color:#DCE6F7;
+  }
+  .stats b{color:var(--accent);font-size:1.15rem;margin-right:4px}
+  /* ---------- controls ---------- */
+  .controls{
+    max-width:680px;margin:14px auto 0;padding:0 16px;
+    display:flex;gap:8px;flex-wrap:wrap;align-items:center;
+  }
+  .controls input[type=search]{
+    flex:1;min-width:140px;
+    border:1px solid var(--line);border-radius:var(--radius);
+    padding:10px 14px;font:inherit;font-size:.95rem;color:var(--navy);
+    background:var(--card);
+  }
+  .controls input[type=search]:focus{outline:2px solid var(--navy-soft);outline-offset:1px}
+  .seg{display:flex;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;background:var(--card)}
+  .seg button{
+    border:0;background:transparent;padding:10px 14px;font:inherit;font-size:.85rem;
+    font-weight:600;color:var(--navy-soft);cursor:pointer;
+  }
+  .seg button[aria-pressed="true"]{background:var(--navy);color:#fff}
+  .seg button:focus-visible{outline:2px solid var(--navy-soft);outline-offset:-2px}
+  .btn{
+    border:1px solid var(--line);background:var(--card);color:var(--navy);
+    border-radius:var(--radius);padding:10px 14px;font:inherit;font-size:.85rem;
+    font-weight:600;cursor:pointer;
+  }
+  .btn:focus-visible{outline:2px solid var(--navy-soft);outline-offset:1px}
+  .btn.refreshing{opacity:.5;pointer-events:none}
+  label.toggle{display:flex;align-items:center;gap:6px;font-size:.85rem;font-weight:500;color:var(--navy-soft);cursor:pointer}
+  /* ---------- list ---------- */
+  main{max-width:680px;margin:14px auto 60px;padding:0 16px}
+  .land-title{
+    font-family:'Barlow Condensed',sans-serif;font-weight:600;
+    font-size:1rem;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--navy-soft);margin:22px 4px 8px;
+    display:flex;align-items:center;gap:10px;
+  }
+  .land-title::after{content:"";flex:1;height:1px;background:var(--line)}
+  ul{list-style:none}
+  .ride{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    padding:12px 12px 12px 16px;
+    margin-bottom:8px;
+    display:flex;align-items:center;gap:12px;
+  }
+  .ride.closed-ride{opacity:.62}
+  .star{
+    background:none;border:0;cursor:pointer;font-size:1.25rem;line-height:1;
+    color:#C8D2E2;padding:4px;flex-shrink:0;
+  }
+  .star.on{color:var(--gold)}
+  .star:focus-visible{outline:2px solid var(--navy-soft);border-radius:6px}
+  .ride-info{flex:1;min-width:0}
+  .ride-name{font-weight:600;font-size:1rem;line-height:1.25}
+  .ride-land{font-size:.76rem;color:var(--navy-soft);margin-top:2px}
+  /* signature element: the signage tile */
+  .tile{
+    font-family:'Barlow Condensed',sans-serif;font-weight:700;
+    min-width:74px;height:56px;flex-shrink:0;
+    border-radius:10px;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    line-height:1;
+  }
+  .tile .num{font-size:1.9rem}
+  .tile .unit{font-size:.64rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;margin-top:2px;opacity:.85}
+  .tile.ok{background:var(--ok-bg);color:var(--ok)}
+  .tile.mid{background:var(--mid-bg);color:var(--mid)}
+  .tile.high{background:var(--high-bg);color:var(--high)}
+  .tile.closed{background:var(--closed-bg);color:var(--closed)}
+  .tile.closed .num{font-size:1.05rem;letter-spacing:.06em}
+  /* ---------- states ---------- */
+  .notice{
+    max-width:680px;margin:30px auto;padding:18px 16px;text-align:center;
+    color:var(--navy-soft);font-size:.95rem;
+  }
+  .notice.error{color:var(--high)}
+  .skeleton .ride-name,.skeleton .tile{
+    background:linear-gradient(90deg,#E5EAF3 25%,#F2F5FA 50%,#E5EAF3 75%);
+    background-size:200% 100%;animation:shimmer 1.2s infinite;
+    color:transparent;border-radius:8px;
+  }
+  @keyframes shimmer{to{background-position:-200% 0}}
+  footer{
+    max-width:680px;margin:0 auto 30px;padding:0 16px;
+    font-size:.78rem;color:var(--navy-soft);text-align:center;
+  }
+  footer a{color:var(--navy);font-weight:600}
+  @media (prefers-reduced-motion:reduce){
+    .skeleton .ride-name,.skeleton .tile{animation:none}
+  }
+  @media (max-width:420px){
+    .stats{gap:12px;font-size:.85rem}
+    .controls .seg button{padding:10px 10px}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="head-inner">
+    <div class="head-top">
+      <h1><span id="park-name">Europa-Park</span> <span class="accent">Wait Times</span></h1>
+      <span class="updated" id="updated">loading…</span>
+    </div>
+    <div class="park-tabs" role="group" aria-label="Choose park" id="park-tabs"></div>
+    <div class="stats" id="stats" hidden>
+      <span><b id="stat-open">–</b>rides open</span>
+      <span><b id="stat-avg">–</b>min avg wait</span>
+      <span><b id="stat-max">–</b>min longest</span>
+    </div>
+  </div>
+</header>
+
+<div class="controls">
+  <input type="search" id="search" placeholder="Find a ride…" aria-label="Find a ride">
+  <div class="seg" role="group" aria-label="Sort order">
+    <button id="sort-wait" aria-pressed="true">Longest wait</button>
+    <button id="sort-land" aria-pressed="false">By area</button>
+  </div>
+  <label class="toggle"><input type="checkbox" id="show-closed"> Show closed</label>
+  <button class="btn" id="refresh">↻ Refresh</button>
+</div>
+
+<main id="main">
+  <ul id="list"></ul>
+  <div class="notice" id="notice" hidden></div>
+</main>
+
+<footer>
+  Data refreshes every 5 minutes · Powered by
+  <a href="https://queue-times.com/en-US" target="_blank" rel="noopener">Queue-Times.com</a>
+</footer>
+
+<script>
+(function(){
+  "use strict";
+  // Add or remove parks here — find IDs at https://queue-times.com/parks.json
+  var PARKS = [
+    { id: 51,  name: "Europa-Park" },
+    { id: 309, name: "Rulantica" }
+  ];
+  function apiUrl(parkId){
+    return "https://queue-times.com/parks/" + parkId + "/queue_times.json";
+  }
+  // The API doesn't send CORS headers, so try a couple of public read-only proxies.
+  function sources(parkId){
+    var api = apiUrl(parkId);
+    return [
+      api, // in case CORS is ever enabled
+      "https://api.allorigins.win/raw?url=" + encodeURIComponent(api),
+      "https://corsproxy.io/?url=" + encodeURIComponent(api)
+    ];
+  }
+  var REFRESH_MS = 5 * 60 * 1000;
+
+  var state = {
+    parkId: loadPark(),
+    rides: [],          // {id,name,land,open,wait,updated}
+    sort: "wait",       // "wait" | "land"
+    query: "",
+    showClosed: false,
+    favorites: [],      // loaded per park
+    lastFetch: null
+  };
+  state.favorites = loadFavs();
+
+  var $ = function(id){ return document.getElementById(id); };
+
+  /* ---------- favorites & park choice (persist when possible) ---------- */
+  function loadFavs(){
+    try { return JSON.parse(localStorage.getItem("tp-favs-" + state.parkId) || "[]"); }
+    catch(e){ return []; }
+  }
+  function saveFavs(){
+    try { localStorage.setItem("tp-favs-" + state.parkId, JSON.stringify(state.favorites)); }
+    catch(e){ /* session-only fallback */ }
+  }
+  function loadPark(){
+    try {
+      var saved = Number(localStorage.getItem("tp-park"));
+      if (PARKS.some(function(p){ return p.id === saved; })) return saved;
+    } catch(e){}
+    return PARKS[0].id;
+  }
+  function savePark(){
+    try { localStorage.setItem("tp-park", String(state.parkId)); } catch(e){}
+  }
+
+  /* ---------- data ---------- */
+  function fetchData(){
+    $("refresh").classList.add("refreshing");
+    showSkeleton();
+    var forPark = state.parkId;
+    var list = sources(forPark);
+    tryNext(0);
+
+    function tryNext(i){
+      if (i >= list.length){ if (forPark === state.parkId) showError(); return; }
+      fetch(list[i], {cache:"no-store"})
+        .then(function(r){ if(!r.ok) throw new Error(r.status); return r.json(); })
+        .then(function(json){ if (forPark === state.parkId) ingest(json); })
+        .catch(function(){ tryNext(i+1); });
+    }
+  }
+
+  function ingest(json){
+    var rides = [];
+    function addRide(r, landName){
+      rides.push({
+        id: r.id, name: r.name, land: landName,
+        open: !!r.is_open, wait: r.wait_time || 0,
+        updated: r.last_updated
+      });
+    }
+    (json.lands || []).forEach(function(land){
+      (land.rides || []).forEach(function(r){ addRide(r, land.name); });
+    });
+    (json.rides || []).forEach(function(r){ addRide(r, "Attractions"); });
+
+    state.rides = rides;
+    state.lastFetch = new Date();
+    $("refresh").classList.remove("refreshing");
+    render();
+  }
+
+  function showError(){
+    $("refresh").classList.remove("refreshing");
+    $("list").innerHTML = "";
+    var n = $("notice");
+    n.hidden = false;
+    n.className = "notice error";
+    n.textContent = "Couldn't reach the wait time service. Check your connection, then press Refresh.";
+    $("updated").textContent = "offline";
+  }
+
+  function showSkeleton(){
+    if (state.rides.length) return; // keep old data visible during refresh
+    var html = "";
+    for (var i=0;i<8;i++){
+      html += '<li class="ride skeleton"><span class="star">☆</span>' +
+              '<div class="ride-info"><div class="ride-name">████████████</div></div>' +
+              '<div class="tile"><span class="num">██</span></div></li>';
+    }
+    $("list").innerHTML = html;
+  }
+
+  /* ---------- rendering ---------- */
+  function tileClass(r){
+    if (!r.open) return "closed";
+    if (r.wait <= 20) return "ok";
+    if (r.wait <= 45) return "mid";
+    return "high";
+  }
+
+  function rideRow(r, showLand){
+    var fav = state.favorites.indexOf(r.id) !== -1;
+    var cls = tileClass(r);
+    var tileInner = r.open
+      ? '<span class="num">' + r.wait + '</span><span class="unit">min</span>'
+      : '<span class="num">closed</span>';
+    return '<li class="ride' + (r.open ? '' : ' closed-ride') + '">' +
+      '<button class="star' + (fav ? ' on' : '') + '" data-fav="' + r.id + '" ' +
+        'aria-label="' + (fav ? 'Remove from' : 'Add to') + ' favorites">' + (fav ? '★' : '☆') + '</button>' +
+      '<div class="ride-info"><div class="ride-name">' + esc(r.name) + '</div>' +
+      (showLand ? '<div class="ride-land">' + esc(r.land) + '</div>' : '') +
+      '</div>' +
+      '<div class="tile ' + cls + '">' + tileInner + '</div></li>';
+  }
+
+  function render(){
+    var q = state.query.trim().toLowerCase();
+    var rides = state.rides.filter(function(r){
+      if (!state.showClosed && !r.open && state.favorites.indexOf(r.id) === -1) return false;
+      if (q && r.name.toLowerCase().indexOf(q) === -1 && r.land.toLowerCase().indexOf(q) === -1) return false;
+      return true;
+    });
+
+    var favs = rides.filter(function(r){ return state.favorites.indexOf(r.id) !== -1; });
+    var rest = rides.filter(function(r){ return state.favorites.indexOf(r.id) === -1; });
+
+    var html = "";
+    if (favs.length){
+      favs.sort(byWait);
+      html += '<div class="land-title">★ Favorites</div><ul>' +
+              favs.map(function(r){ return rideRow(r, true); }).join("") + '</ul>';
+    }
+
+    if (state.sort === "wait"){
+      rest.sort(byWait);
+      html += (favs.length ? '<div class="land-title">All rides</div>' : '') +
+              '<ul>' + rest.map(function(r){ return rideRow(r, true); }).join("") + '</ul>';
+    } else {
+      var lands = {};
+      rest.forEach(function(r){ (lands[r.land] = lands[r.land] || []).push(r); });
+      Object.keys(lands).sort().forEach(function(name){
+        lands[name].sort(byWait);
+        html += '<div class="land-title">' + esc(name) + '</div><ul>' +
+                lands[name].map(function(r){ return rideRow(r, false); }).join("") + '</ul>';
+      });
+    }
+
+    $("list").innerHTML = html;
+    var n = $("notice");
+    if (!rides.length){
+      n.hidden = false; n.className = "notice";
+      n.textContent = state.rides.length
+        ? "No rides match. Try a different search or show closed rides."
+        : "No ride data right now — the park may be closed.";
+    } else { n.hidden = true; }
+
+    renderStats();
+    renderUpdated();
+  }
+
+  function byWait(a,b){
+    if (a.open !== b.open) return a.open ? -1 : 1;
+    return b.wait - a.wait || a.name.localeCompare(b.name);
+  }
+
+  function renderStats(){
+    var open = state.rides.filter(function(r){ return r.open; });
+    if (!open.length){ $("stats").hidden = true; return; }
+    var sum = 0, max = 0;
+    open.forEach(function(r){ sum += r.wait; if (r.wait > max) max = r.wait; });
+    $("stat-open").textContent = open.length;
+    $("stat-avg").textContent = Math.round(sum / open.length);
+    $("stat-max").textContent = max;
+    $("stats").hidden = false;
+  }
+
+  function renderUpdated(){
+    if (!state.lastFetch) return;
+    var mins = Math.floor((Date.now() - state.lastFetch.getTime()) / 60000);
+    $("updated").textContent = mins < 1 ? "updated just now" : "updated " + mins + " min ago";
+  }
+
+  function esc(s){
+    return String(s).replace(/[&<>"']/g, function(c){
+      return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];
+    });
+  }
+
+  /* ---------- events ---------- */
+  $("search").addEventListener("input", function(e){ state.query = e.target.value; render(); });
+  $("show-closed").addEventListener("change", function(e){ state.showClosed = e.target.checked; render(); });
+  $("refresh").addEventListener("click", fetchData);
+  $("sort-wait").addEventListener("click", function(){ setSort("wait"); });
+  $("sort-land").addEventListener("click", function(){ setSort("land"); });
+  function setSort(s){
+    state.sort = s;
+    $("sort-wait").setAttribute("aria-pressed", s === "wait");
+    $("sort-land").setAttribute("aria-pressed", s === "land");
+    render();
+  }
+  $("list").addEventListener("click", function(e){
+    var btn = e.target.closest("[data-fav]");
+    if (!btn) return;
+    var id = Number(btn.getAttribute("data-fav"));
+    var idx = state.favorites.indexOf(id);
+    if (idx === -1) state.favorites.push(id); else state.favorites.splice(idx, 1);
+    saveFavs();
+    render();
+  });
+
+  /* ---------- park switching ---------- */
+  function renderParkTabs(){
+    var tabs = $("park-tabs");
+    tabs.innerHTML = PARKS.map(function(p){
+      return '<button data-park-id="' + p.id + '" aria-pressed="' + (p.id === state.parkId) + '">' +
+             esc(p.name) + '</button>';
+    }).join("");
+  }
+  function applyPark(){
+    var park = PARKS.filter(function(p){ return p.id === state.parkId; })[0];
+    document.body.setAttribute("data-park", String(state.parkId));
+    $("park-name").textContent = park.name;
+    document.title = park.name + " — Wait Times";
+    renderParkTabs();
+  }
+  function switchPark(id){
+    if (id === state.parkId) return;
+    state.parkId = id;
+    state.rides = [];
+    state.lastFetch = null;
+    state.query = "";
+    $("search").value = "";
+    state.favorites = loadFavs();
+    savePark();
+    applyPark();
+    $("updated").textContent = "loading…";
+    $("stats").hidden = true;
+    fetchData();
+  }
+  $("park-tabs").addEventListener("click", function(e){
+    var btn = e.target.closest("[data-park-id]");
+    if (btn) switchPark(Number(btn.getAttribute("data-park-id")));
+  });
+
+  /* ---------- go ---------- */
+  applyPark();
+  fetchData();
+  setInterval(fetchData, REFRESH_MS);
+  setInterval(renderUpdated, 30000);
+})();
+</script>
+</body>
+</html>
