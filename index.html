@@ -7,6 +7,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://api.allorigins.win" crossorigin>
+<link rel="preconnect" href="https://corsproxy.io" crossorigin>
+<link rel="preconnect" href="https://api.themeparks.wiki" crossorigin>
 <style>
   :root{
     --navy:#06255B;        /* park brand ink */
@@ -126,6 +129,15 @@
     display:flex;align-items:center;gap:10px;
   }
   .land-title::after{content:"";flex:1;height:1px;background:var(--line)}
+  button.land-title{
+    width:100%;border:0;background:transparent;cursor:pointer;
+    text-align:left;font-family:'Barlow Condensed',sans-serif;
+  }
+  .fav-toggle .caret{color:var(--accent);font-size:.85em;transition:none}
+  .fav-count{
+    background:var(--accent);color:var(--navy);border-radius:999px;
+    font-size:.7rem;font-weight:700;padding:1px 8px;letter-spacing:0;
+  }
   ul{list-style:none}
   .ride{
     background:var(--card);
@@ -242,11 +254,24 @@
   // The API doesn't send CORS headers, so try a couple of public read-only proxies.
   function sources(parkId){
     var api = apiUrl(parkId);
-    return [
-      api, // in case CORS is ever enabled
+    var all = [
       "https://api.allorigins.win/raw?url=" + encodeURIComponent(api),
-      "https://corsproxy.io/?url=" + encodeURIComponent(api)
+      "https://corsproxy.io/?url=" + encodeURIComponent(api),
+      api // direct, in case CORS is ever enabled
     ];
+    // Try whichever source worked last time first — avoids waiting on dead ones.
+    var best = -1;
+    try { best = Number(localStorage.getItem("tp-src")); } catch(e){}
+    if (best > 0 && best < all.length){
+      var pick = all.splice(best, 1)[0];
+      all.unshift(pick);
+    }
+    return all;
+  }
+  function rememberSource(url, parkId){
+    var api = apiUrl(parkId);
+    var idx = url === api ? 2 : (url.indexOf("allorigins") !== -1 ? 0 : 1);
+    try { localStorage.setItem("tp-src", String(idx)); } catch(e){}
   }
   var REFRESH_MS = 5 * 60 * 1000;
 
@@ -291,9 +316,11 @@
     query: "",
     showClosed: false,
     favorites: [],      // loaded per park
+    favCollapsed: false,
     lastFetch: null
   };
   state.favorites = loadFavs();
+  try { state.favCollapsed = localStorage.getItem("tp-fav-collapsed") === "1"; } catch(e){}
 
   var $ = function(id){ return document.getElementById(id); };
 
@@ -318,10 +345,36 @@
   }
 
   /* ---------- data ---------- */
+  function cacheKey(parkId){ return "tp-data-" + parkId; }
+
+  function loadCache(parkId){
+    try {
+      var raw = localStorage.getItem(cacheKey(parkId));
+      if (!raw) return null;
+      var obj = JSON.parse(raw);
+      return obj && obj.rides ? obj : null;
+    } catch(e){ return null; }
+  }
+  function saveCache(parkId, rides){
+    try {
+      localStorage.setItem(cacheKey(parkId), JSON.stringify({ rides: rides, ts: Date.now() }));
+    } catch(e){}
+  }
+
   function fetchData(){
-    $("refresh").classList.add("refreshing");
-    showSkeleton();
     var forPark = state.parkId;
+    // Show cached data instantly so the page feels immediate.
+    if (!state.rides.length){
+      var cached = loadCache(forPark);
+      if (cached){
+        state.rides = cached.rides;
+        state.lastFetch = new Date(cached.ts);
+        render();
+      } else {
+        showSkeleton();
+      }
+    }
+    $("refresh").classList.add("refreshing");
     var list = sources(forPark);
     tryNext(0);
 
@@ -329,12 +382,16 @@
       if (i >= list.length){ if (forPark === state.parkId) showError(); return; }
       fetch(list[i], {cache:"no-store"})
         .then(function(r){ if(!r.ok) throw new Error(r.status); return r.json(); })
-        .then(function(json){ if (forPark === state.parkId) ingest(json); })
+        .then(function(json){
+          if (forPark !== state.parkId) return;
+          rememberSource(list[i], forPark);
+          ingest(json, forPark);
+        })
         .catch(function(){ tryNext(i+1); });
     }
   }
 
-  function ingest(json){
+  function ingest(json, forPark){
     var rides = [];
     function addRide(r, landName){
       rides.push({
@@ -350,6 +407,7 @@
 
     state.rides = rides;
     state.lastFetch = new Date();
+    saveCache(forPark, rides);
     $("refresh").classList.remove("refreshing");
     render();
   }
@@ -413,8 +471,14 @@
     var html = "";
     if (favs.length){
       favs.sort(byWait);
-      html += '<div class="land-title">★ Favorites</div><ul>' +
-              favs.map(function(r){ return rideRow(r, true); }).join("") + '</ul>';
+      var collapsed = state.favCollapsed;
+      html += '<button class="land-title fav-toggle" id="fav-toggle" aria-expanded="' +
+              (!collapsed) + '">' +
+              '<span class="caret">' + (collapsed ? '\u25B8' : '\u25BE') + '</span>' +
+              '\u2605 Favorites <span class="fav-count">' + favs.length + '</span></button>';
+      if (!collapsed){
+        html += '<ul>' + favs.map(function(r){ return rideRow(r, true); }).join("") + '</ul>';
+      }
     }
 
     if (state.sort === "wait"){
@@ -485,6 +549,13 @@
     render();
   }
   $("list").addEventListener("click", function(e){
+    var toggle = e.target.closest("#fav-toggle");
+    if (toggle){
+      state.favCollapsed = !state.favCollapsed;
+      try { localStorage.setItem("tp-fav-collapsed", state.favCollapsed ? "1" : "0"); } catch(err){}
+      render();
+      return;
+    }
     var btn = e.target.closest("[data-fav]");
     if (!btn) return;
     var id = Number(btn.getAttribute("data-fav"));
@@ -554,14 +625,24 @@
     var forPark = state.parkId;
     var park = PARKS.filter(function(p){ return p.id === forPark; })[0];
     if (!park.tp){ $("hours").hidden = true; return; }
+    // Instant display from cache if it's from today.
+    try {
+      var hc = JSON.parse(localStorage.getItem("tp-hours-" + forPark) || "null");
+      if (hc && hc.day === berlinDay()) renderHours(hc.info);
+    } catch(e){}
     resolveTpIds(function(){
       var tpId = tpIds[park.tp];
       if (!tpId){ if (forPark === state.parkId) $("hours").hidden = true; return; }
       fetchJson(viaProxies(TP_API + "/entity/" + tpId + "/schedule"), 0, function(json){
         if (forPark !== state.parkId) return;
-        renderHours(parseSchedule(json));
+        var info = parseSchedule(json);
+        renderHours(info);
+        try {
+          localStorage.setItem("tp-hours-" + forPark,
+            JSON.stringify({ day: berlinDay(), info: info }));
+        } catch(e){}
       }, function(){
-        if (forPark === state.parkId) $("hours").hidden = true;
+        if (forPark === state.parkId && $("hours").hidden) $("hours").hidden = true;
       });
     });
   }
