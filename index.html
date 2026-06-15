@@ -142,36 +142,36 @@
   .ride{
     background:var(--card);
     border:1px solid var(--line);
-    border-radius:var(--radius);
-    padding:12px 12px 12px 16px;
-    margin-bottom:8px;
-    display:flex;align-items:center;gap:12px;
+    border-radius:10px;
+    padding:7px 10px 7px 12px;
+    margin-bottom:5px;
+    display:flex;align-items:center;gap:9px;
   }
   .ride.closed-ride{opacity:.62}
   .star{
-    background:none;border:0;cursor:pointer;font-size:1.25rem;line-height:1;
-    color:#C8D2E2;padding:4px;flex-shrink:0;
+    background:none;border:0;cursor:pointer;font-size:1.1rem;line-height:1;
+    color:#C8D2E2;padding:2px;flex-shrink:0;
   }
   .star.on{color:var(--gold)}
   .star:focus-visible{outline:2px solid var(--navy-soft);border-radius:6px}
   .ride-info{flex:1;min-width:0}
-  .ride-name{font-weight:600;font-size:1rem;line-height:1.25}
-  .ride-land{font-size:.76rem;color:var(--navy-soft);margin-top:2px}
+  .ride-name{font-weight:600;font-size:.92rem;line-height:1.2}
+  .ride-land{font-size:.72rem;color:var(--navy-soft);margin-top:1px}
   /* signature element: the signage tile */
   .tile{
     font-family:'Barlow Condensed',sans-serif;font-weight:700;
-    min-width:74px;height:56px;flex-shrink:0;
-    border-radius:10px;
-    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    min-width:54px;height:40px;flex-shrink:0;
+    border-radius:8px;
+    display:flex;flex-direction:row;align-items:baseline;justify-content:center;gap:3px;
     line-height:1;
   }
-  .tile .num{font-size:1.9rem}
-  .tile .unit{font-size:.64rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;margin-top:2px;opacity:.85}
+  .tile .num{font-size:1.4rem}
+  .tile .unit{font-size:.6rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;opacity:.85}
   .tile.ok{background:var(--ok-bg);color:var(--ok)}
   .tile.mid{background:var(--mid-bg);color:var(--mid)}
   .tile.high{background:var(--high-bg);color:var(--high)}
   .tile.closed{background:var(--closed-bg);color:var(--closed)}
-  .tile.closed .num{font-size:1.05rem;letter-spacing:.06em}
+  .tile.closed .num{font-size:.78rem;letter-spacing:.04em}
   /* ---------- states ---------- */
   .notice{
     max-width:680px;margin:30px auto;padding:18px 16px;text-align:center;
@@ -466,7 +466,10 @@
     });
 
     var favs = rides.filter(function(r){ return state.favorites.indexOf(r.id) !== -1; });
-    var rest = rides.filter(function(r){ return state.favorites.indexOf(r.id) === -1; });
+    // When collapsed (or no favorites), the main list shows every ride including favorites.
+    var rest = (favs.length && !state.favCollapsed)
+      ? rides.filter(function(r){ return state.favorites.indexOf(r.id) === -1; })
+      : rides;
 
     var html = "";
     if (favs.length){
@@ -483,7 +486,8 @@
 
     if (state.sort === "wait"){
       rest.sort(byWait);
-      html += (favs.length ? '<div class="land-title">All rides</div>' : '') +
+      var showAllLabel = favs.length && !state.favCollapsed;
+      html += (showAllLabel ? '<div class="land-title">All rides</div>' : '') +
               '<ul>' + rest.map(function(r){ return rideRow(r, true); }).join("") + '</ul>';
     } else {
       var lands = {};
@@ -514,7 +518,10 @@
   }
 
   function renderStats(){
-    var open = state.rides.filter(function(r){ return r.open; });
+    var open = state.rides.filter(function(r){
+      if (state.type !== "all" && typeOf(r.name) !== state.type) return false;
+      return r.open;
+    });
     if (!open.length){ $("stats").hidden = true; return; }
     var sum = 0, max = 0;
     open.forEach(function(r){ sum += r.wait; if (r.wait > max) max = r.wait; });
